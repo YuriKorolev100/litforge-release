@@ -1,0 +1,71 @@
+
+
+===== _LitForge/Build/RELEASE_MANIFEST.yaml =====
+
+release_target: "LitForge-RELEASE"
+include_paths:
+  - "_LitForge/"
+exclude_paths:
+  - "_LitForge/Agent/"
+  - "_LitForge/Proposals/"
+  - "_LitForge/Tests/"
+  - "_LitForge/Build/"
+notes:
+  - "Release vault ships without dev scaffolding."
+
+
+===== _LitForge/Agent/INVARIANTS.md =====
+
+# LitForge Invariants (DEV)
+
+Non-negotiable:
+- Backbone order is immutable (Discover → ... → Ship).
+- Red-Team loop moat is immutable (hostile audit → patch spec → diff-first → regression → gate).
+- "Dashboard" is the canonical term.
+- Ship gates cannot be loosened (only tightened).
+- DEV agents never write to user Projects/ unless explicitly allowed.
+
+
+===== _LitForge/Agent/POLICY.md =====
+
+# Agent Policy (DEV)
+
+Allowed write paths:
+- _LitForge/
+- _LitForge/Proposals/
+- _LitForge/Tests/reports/
+- _LitForge/Build/
+
+Forbidden by default:
+- Projects/** (unless ALLOW_PROJECT_WRITES=true)
+- OS paths outside vault
+
+All changes must be PR-style:
+Proposal note + unified diff + regression report + provenance entry.
+
+
+===== tools/lf_lint.py =====
+
+#!/usr/bin/env python3
+# Minimal LitForge linter (stub).
+from pathlib import Path
+import sys
+
+ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd().resolve()
+
+REQUIRED = [
+    ROOT / "_LitForge" / "Dashboard.md",
+    ROOT / "_LitForge" / "Engine" / "litforge.manifest.yaml",
+    ROOT / "_LitForge" / "Templates" / "01-Discover.md",
+    ROOT / "_LitForge" / "Templates" / "08-Ship.md",
+    ROOT / "_LitForge" / "Logs" / "provenance" / "2026-02.md",
+]
+
+missing = [p for p in REQUIRED if not p.exists()]
+if missing:
+    print("FAIL: missing required files:")
+    for p in missing:
+        print(" -", p)
+    sys.exit(1)
+
+print("PASS: basic structure present")

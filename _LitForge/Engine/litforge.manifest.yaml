@@ -1,0 +1,21 @@
+litforge_version: "0.1.0"
+schemas:
+  stage: "v1"
+  project_config: "v1"
+  provenance: "v1"
+backbone:
+  - Discover
+  - Position
+  - Outline
+  - Draft
+  - Red-Team
+  - Patch
+  - Repeat
+  - Ship
+required:
+  dashboard: "_LitForge/Dashboard.md"
+  setup_wizard: "_LitForge/Setup/00-Setup-Wizard.md"
+  capability_check: "_LitForge/Setup/01-Capability-Check.md"
+  safety_fence: "_LitForge/Setup/02-Safety-Fence.md"
+notes:
+  update_policy: "Never overwrite Projects/. Templates are copy-on-create."

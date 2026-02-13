@@ -1,0 +1,107 @@
+.
+├── _Assets
+├── _LitForge
+│   ├── Agent
+│   │   ├── INVARIANTS.md
+│   │   ├── KILL_SWITCH.flag
+│   │   ├── POLICY.md
+│   │   └── runbooks
+│   ├── Build
+│   │   ├── RELEASE_MANIFEST.yaml
+│   │   └── update_packs
+│   ├── Dashboard.md
+│   ├── Engine
+│   │   ├── litforge.manifest.yaml
+│   │   ├── modes
+│   │   │   ├── Fiction_Consistency.v1.md
+│   │   │   └── NF_STRICT.v1.md
+│   │   └── schemas
+│   │       ├── project-config.v1.md
+│   │       ├── provenance.v1.md
+│   │       └── stage.v1.md
+│   ├── Logs
+│   │   ├── acceptance
+│   │   │   └── 2026-02.md
+│   │   └── provenance
+│   │       └── 2026-02.md
+│   ├── Proposals
+│   │   └── diffs
+│   ├── Setup
+│   │   ├── 00-Setup-Wizard.md
+│   │   ├── 01-Capability-Check.md
+│   │   └── 02-Safety-Fence.md
+│   ├── Templates
+│   │   ├── 01-Discover.md
+│   │   ├── 02-Position.md
+│   │   ├── 03-Outline.md
+│   │   ├── 04-Draft.md
+│   │   ├── 05-Red-Team.md
+│   │   ├── 06-Patch.md
+│   │   ├── 07-Repeat.md
+│   │   └── 08-Ship.md
+│   ├── Tests
+│   │   ├── fixtures
+│   │   └── reports
+│   └── Updates
+│       ├── migrations
+│       │   └── MIGRATIONS.md
+│       └── README.md
+├── .obsidian
+│   ├── appearance.json
+│   ├── app.json
+│   ├── core-plugins.json
+│   └── workspace.json
+├── Projects
+│   ├── EXAMPLE - Tiny Loop Demo
+│   │   ├── 00-Project-Config.md
+│   │   ├── 00-Stage-Index.md
+│   │   ├── Drafts
+│   │   │   ├── draft_v0.1.md
+│   │   │   └── draft_v0.md
+│   │   ├── Patches
+│   │   │   ├── diffs
+│   │   │   │   └── diff_001.patch
+│   │   │   └── PatchSpec_001.md
+│   │   ├── Ship
+│   │   │   └── Bundle_v0.1.0
+│   │   ├── Stage
+│   │   │   ├── 01-Discover.md
+│   │   │   ├── 02-Position.md
+│   │   │   ├── 03-Outline.md
+│   │   │   ├── 04-Draft.md
+│   │   │   ├── 05-Red-Team.md
+│   │   │   ├── 06-Patch.md
+│   │   │   ├── 07-Repeat.md
+│   │   │   └── 08-Ship.md
+│   │   └── Tests
+│   │       └── Regression_001.md
+│   └── _Project-Template
+│       ├── 00-Project-Config.md
+│       ├── 00-Stage-Index.md
+│       ├── Drafts
+│       ├── Patches
+│       │   └── diffs
+│       ├── Ship
+│       │   └── Bundle_v0.1.0
+│       ├── Stage
+│       │   ├── 01-Discover.md
+│       │   ├── 02-Position.md
+│       │   ├── 03-Outline.md
+│       │   ├── 04-Draft.md
+│       │   ├── 05-Red-Team.md
+│       │   ├── 06-Patch.md
+│       │   ├── 07-Repeat.md
+│       │   └── 08-Ship.md
+│       └── Tests
+│           └── Acceptance_Stage.md
+├── _TMP_EXPORT
+│   ├── CORE_FILES.txt
+│   ├── EXAMPLE_FILE_LIST.txt
+│   ├── GIT_LOG.txt
+│   ├── GIT_STATUS.txt
+│   └── TREE.txt
+└── tools
+    └── lf_lint.py
+
+42 directories, 62 files
+

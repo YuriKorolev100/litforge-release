@@ -1,0 +1,4 @@
+Projects/EXAMPLE - Tiny Loop Demo/Stage/05-Red-Team.md
+Projects/EXAMPLE - Tiny Loop Demo/Stage/08-Ship.md
+Projects/_Project-Template/Stage/05-Red-Team.md
+Projects/_Project-Template/Stage/08-Ship.md

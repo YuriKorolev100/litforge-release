@@ -1,0 +1,10 @@
+release_target: "LitForge-RELEASE"
+include_paths:
+  - "_LitForge/"
+exclude_paths:
+  - "_LitForge/Agent/"
+  - "_LitForge/Proposals/"
+  - "_LitForge/Tests/"
+  - "_LitForge/Build/"
+notes:
+  - "Release vault ships without dev scaffolding."
