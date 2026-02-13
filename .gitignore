@@ -1,0 +1,13 @@
+# Obsidian local state
+.obsidian/workspace.json
+
+# Local exports / temp
+_TMP_EXPORT/
+dist/
+__pycache__/
+.venv/
+.env
+
+# OS noise
+.DS_Store
+Thumbs.db
