@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# lfctl — LitForge CLI dispatcher (Session 3)
+# lfctl — LitForge CLI dispatcher (Session 4 — hardened)
 #
 # Subcommands:
-#   doctor               Check vault health (deps, structure, git)
-#   init-project <name>  Create a new project from template
-#   lint                 Run schema + structure + gate checks on vault
-#   replay <project>     Run moat-chain replay on a project directory
+#   doctor               Check vault health (deps, structure, git, integrity)
+#   init-project <n>     Create a new project from template
+#   integrity [args]     Verify or update engine integrity manifest
+#   lint                 Validate vault structure + schemas + gates
+#   replay <project>     Replay Red-Team moat chain for a project
 #
 # Exit codes mirror child: 0=PASS, 1=FAIL, 2=deps, 3=KILL_SWITCH
 #
@@ -17,7 +18,6 @@
 set -euo pipefail
 
 # ── Resolve vault root ───────────────────────────────────────────────
-# Walk up from this script's location to find _LitForge/
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VAULT=""
 CANDIDATE="$SCRIPT_DIR"
@@ -52,7 +52,8 @@ usage() {
     echo ""
     echo "Commands:"
     echo "  doctor               Check vault health (deps, structure, git)"
-    echo "  init-project <name>  Create a new project from template"
+    echo "  init-project <n>     Create a new project from template"
+    echo "  integrity [args]     Verify or update engine integrity manifest"
     echo "  lint                 Validate vault structure + schemas + gates"
     echo "  replay <project>     Replay Red-Team moat chain for a project"
     echo ""
@@ -66,22 +67,42 @@ CMD="$1"
 shift
 
 # ── Dispatch ─────────────────────────────────────────────────────────
-
 case "$CMD" in
-  lint)
-    python3 tools/lf_lint.py .
-    ;;
-  replay)
-    python3 tools/lf_replay.py "$@"
-    ;;
-  doctor)
-    python3 tools/lf_doctor.py .
-    ;;
-  init-project)
-    python3 tools/lf_init_project.py "$@"
-    ;;
-  *)
-    usage
-    exit 1
-    ;;
+    doctor)
+        exec python3 "$TOOLS_DIR/lf_doctor.py"
+        ;;
+    init-project)
+        if [ $# -lt 1 ]; then
+            echo "ERROR: init-project requires a project name"
+            echo "  Example: lfctl init-project \"My Essay\""
+            exit 1
+        fi
+        exec python3 "$TOOLS_DIR/lf_init_project.py" "$1"
+        ;;
+    integrity)
+        exec python3 "$TOOLS_DIR/lf_integrity.py" "$@"
+        ;;
+    lint)
+        exec python3 "$TOOLS_DIR/lf_lint.py" "$VAULT" "$@"
+        ;;
+    replay)
+        if [ $# -lt 1 ]; then
+            echo "ERROR: replay requires a project path argument"
+            echo "  Example: lfctl replay 'Projects/EXAMPLE - Tiny Loop Demo'"
+            exit 1
+        fi
+        PROJECT_PATH="$1"
+        if [ "${PROJECT_PATH:0:1}" != "/" ]; then
+            PROJECT_PATH="$VAULT/$PROJECT_PATH"
+        fi
+        if [ ! -d "$PROJECT_PATH" ]; then
+            echo "FATAL: not a directory: $PROJECT_PATH"
+            exit 1
+        fi
+        exec python3 "$TOOLS_DIR/lf_replay.py" "$PROJECT_PATH"
+        ;;
+    *)
+        echo "ERROR: unknown command '$CMD'"
+        usage
+        ;;
 esac

@@ -1,21 +1,43 @@
 #!/usr/bin/env python3
-"""LitForge schema validator – MVP enforcement.
+"""LitForge schema validator – hardened MVP enforcement.
 
 Validates YAML frontmatter against:
   - stage/v1        (stage.v1.md)
   - project-config/v1  (project-config.v1.md)
 
-NO invented behaviour.  FAST/STRICT and NF_STRICT are metadata-only;
-violations produce warnings, not errors.
+Security hardening:
+  - Bounded read: only first 64 KiB of any file is touched.
+  - YAML aliases/anchors rejected (custom loader).
+  - Returns None on any parse or encoding error.
 """
-import re, sys
+import re
+import sys
 from pathlib import Path
-from typing import Any
 
 try:
     import yaml
 except ImportError:
-    print("FATAL: PyYAML required (pip install pyyaml)"); sys.exit(2)
+    print("FATAL: PyYAML required (pip install pyyaml)")
+    sys.exit(2)
+
+# Import size constant from lf_safe (co-located in tools/)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lf_safe import MAX_FRONTMATTER_BYTES
+
+
+# ── Alias-rejecting YAML loader ─────────────────────────────────────
+class _NoAliasLoader(yaml.SafeLoader):
+    """SafeLoader that refuses anchors/aliases (billion-laughs defence)."""
+
+_def_compose_node = yaml.SafeLoader.compose_node
+
+def _no_alias_compose_node(self, parent, index):
+    if self.check_event(yaml.events.AliasEvent):
+        raise yaml.YAMLError("YAML aliases/anchors are not permitted")
+    return _def_compose_node(self, parent, index)
+
+_NoAliasLoader.compose_node = _no_alias_compose_node  # type: ignore[assignment]
+
 
 # ── Constants derived verbatim from schema docs ──────────────────────
 STAGE_NAMES = [
@@ -29,13 +51,28 @@ PROV_NAMES    = ["None", "OpenAI", "Anthropic", "Google", "xAI", "Local", "Other
 
 
 def extract_frontmatter(path: Path) -> dict | None:
-    """Return parsed YAML frontmatter or None."""
-    text = path.read_text(encoding="utf-8")
-    m = re.match(r"^---\n(.*?)\n---", text, re.DOTALL)
+    """Return parsed YAML frontmatter or None.
+
+    Bounded read: only the first MAX_FRONTMATTER_BYTES are read.
+    Alias/anchor YAML constructs are rejected.
+    Returns None on any encoding, I/O, or parse error.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            head = fh.read(MAX_FRONTMATTER_BYTES)
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+    m = re.match(r"^---\n(.*?)\n---", head, re.DOTALL)
     if not m:
         return None
-    return yaml.safe_load(m.group(1)) or {}
+    try:
+        result = yaml.load(m.group(1), Loader=_NoAliasLoader)
+        return result if isinstance(result, dict) else {}
+    except yaml.YAMLError:
+        return None
 
+
+# ── Helpers ──────────────────────────────────────────────────────────
 
 def _req(errors: list, fm: dict, key: str, label: str):
     if key not in fm:

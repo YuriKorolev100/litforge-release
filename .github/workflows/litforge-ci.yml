@@ -22,6 +22,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyyaml
 
+      - name: Run unit tests
+        run: |
+          python -m pytest tests/ -v || python -m unittest discover -s tests -v
+
+      - name: Verify engine integrity
+        run: |
+          python tools/lf_integrity.py verify
+
       - name: Run LitForge lint
         run: |
           python tools/lf_lint.py .
@@ -29,4 +37,3 @@ jobs:
       - name: Run LitForge replay (moat chain)
         run: |
           python tools/lf_replay.py "Projects/EXAMPLE - Tiny Loop Demo"
-

@@ -2,41 +2,25 @@
 """LitForge doctor — vault health check for writers.
 
 Checks:
-  1. Vault root (must find _LitForge/ and Projects/)
+  1. Vault root (_LitForge/ and Projects/)
   2. Python version (>= 3.10 recommended)
   3. PyYAML importable
   4. Required LitForge files present
-  5. Git repo present and working tree clean
+  5. Engine integrity (INTEGRITY.sha256)
+  6. Git repo + clean working tree
 
 Exit codes: 0=PASS (warnings ok), 1=FAIL, 2=missing deps, 3=KILL_SWITCH
 """
-import os
 import subprocess
 import sys
 from pathlib import Path
 
-# ── Resolve vault root ───────────────────────────────────────────────
-VAULT = None
-candidate = Path(__file__).resolve().parent
-for _ in range(10):
-    if (candidate / "_LitForge").is_dir():
-        VAULT = candidate
-        break
-    parent = candidate.parent
-    if parent == candidate:
-        break
-    candidate = parent
+# ── Shared imports ───────────────────────────────────────────────────
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lf_safe import find_vault_root, check_kill_switch
 
-if VAULT is None:
-    print("FATAL: cannot locate _LitForge/ in ancestors of this script")
-    print("  Are you running from inside the LitForge vault?")
-    sys.exit(1)
-
-# ── Kill switch (fail-closed, before ANY work) ───────────────────────
-KS = VAULT / "_LitForge" / "Agent" / "KILL_SWITCH.flag"
-if KS.exists():
-    print(f"ABORT: kill switch active  ({KS})")
-    sys.exit(3)
+VAULT = find_vault_root()
+check_kill_switch(VAULT)
 
 # ── State ────────────────────────────────────────────────────────────
 passes: list[str] = []
@@ -132,12 +116,28 @@ if missing_files:
     )
 
 # ══════════════════════════════════════════════════════════════════════
-# 5. Git repo + clean working tree
+# 5. Engine integrity
+# ══════════════════════════════════════════════════════════════════════
+try:
+    from lf_integrity import cmd_verify as integrity_verify
+    rc = integrity_verify(quiet=True)
+    if rc == 0:
+        ok("Engine integrity verified (INTEGRITY.sha256)")
+    else:
+        fail(
+            "Engine integrity check failed",
+            "Run: python tools/lf_integrity.py verify\n"
+            "  Then: python tools/lf_integrity.py update --i-understand"
+        )
+except Exception as exc:
+    warn(f"Could not run integrity check: {exc}")
+
+# ══════════════════════════════════════════════════════════════════════
+# 6. Git repo + clean working tree
 # ══════════════════════════════════════════════════════════════════════
 git_dir = VAULT / ".git"
 if git_dir.exists():
     ok("Git repository found (.git/ present)")
-    # Check working tree — read-only, safe: just `git status --porcelain`
     try:
         result = subprocess.run(
             ["git", "-C", str(VAULT), "status", "--porcelain"],
@@ -192,7 +192,6 @@ if fixes:
     print()
     print("  How to fix:")
     for i, fix in enumerate(fixes, 1):
-        # Indent multiline fix text
         lines = fix.splitlines()
         print(f"  {i}) {lines[0]}")
         for line in lines[1:]:

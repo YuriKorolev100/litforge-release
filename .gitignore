@@ -20,3 +20,6 @@ _LitForge/_DEV_TMP/
 __pycache__/
 *.pyc
 
+
+# local artifacts
+files.zip

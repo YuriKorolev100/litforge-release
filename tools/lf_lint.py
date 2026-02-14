@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""LitForge linter – MVP enforcement (Session 1).
+"""LitForge linter – hardened MVP enforcement.
 
 Checks:
-  1. Kill switch (fail-closed)
+  0. Kill switch (fail-closed)
+  1. Engine integrity (INTEGRITY.sha256)
   2. Vault structure (required files)
   3. Stage schema validation (stage/v1)
   4. Project-config schema validation (project-config/v1)
@@ -13,23 +14,22 @@ Exit codes: 0=PASS, 1=FAIL, 3=KILL_SWITCH
 import sys
 from pathlib import Path
 
-ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd().resolve()
-
-# ── 0. Kill switch (fail-closed) ─────────────────────────────────────
-KS = ROOT / "_LitForge" / "Agent" / "KILL_SWITCH.flag"
-if KS.exists():
-    print(f"ABORT: kill switch active  ({KS})")
-    print("No checks executed.  Remove the flag to proceed.")
-    sys.exit(3)
-
-# ── Import validator (same tools/ dir) ───────────────────────────────
+# ── Shared imports ───────────────────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lf_validate import (
-    extract_frontmatter, validate_stage, validate_project_config,
-)
+from lf_safe import find_vault_root, check_kill_switch
+
+ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else find_vault_root()
+check_kill_switch(ROOT)
+
+from lf_validate import extract_frontmatter, validate_stage, validate_project_config
+from lf_integrity import cmd_verify as integrity_verify
 
 errors:   list[str] = []
 warnings: list[str] = []
+
+# ── 0. Engine integrity ─────────────────────────────────────────────
+if integrity_verify(quiet=True) != 0:
+    errors.append("INTEGRITY: engine file verification failed (run: python tools/lf_integrity.py verify)")
 
 # ── 1. Vault structure ───────────────────────────────────────────────
 REQUIRED = [
@@ -39,9 +39,9 @@ REQUIRED = [
     "_LitForge/Setup/01-Capability-Check.md",
     "_LitForge/Setup/02-Safety-Fence.md",
 ]
-for i, prefix in enumerate(
-    ["01-Discover","02-Position","03-Outline","04-Draft",
-     "05-Red-Team","06-Patch","07-Repeat","08-Ship"], start=1):
+for prefix in [
+    "01-Discover","02-Position","03-Outline","04-Draft",
+    "05-Red-Team","06-Patch","07-Repeat","08-Ship"]:
     REQUIRED.append(f"_LitForge/Templates/{prefix}.md")
 
 for rel in REQUIRED:
@@ -53,11 +53,10 @@ projects_dir = ROOT / "Projects"
 if projects_dir.is_dir():
     for proj in sorted(projects_dir.iterdir()):
         if not proj.is_dir() or proj.name.startswith("_"):
-            continue  # skip _Project-Template
+            continue
 
         tag = proj.name
 
-        # 2a. Project config
         cfg_path = proj / "00-Project-Config.md"
         cfg_fm = None
         if cfg_path.exists():
@@ -67,7 +66,6 @@ if projects_dir.is_dir():
         else:
             errors.append(f"SCHEMA: missing Projects/{tag}/00-Project-Config.md")
 
-        # 2b. Stage files
         stage_dir = proj / "Stage"
         if not stage_dir.is_dir():
             errors.append(f"STRUCT: missing Projects/{tag}/Stage/")
@@ -80,7 +78,7 @@ if projects_dir.is_dir():
             else:
                 warnings.append(f"SCHEMA: no frontmatter in {sf.relative_to(ROOT)}")
 
-        # ── 3. Ship gate ─────────────────────────────────────────────
+        # Ship gate
         ship_path = stage_dir / "08-Ship.md"
         if ship_path.exists() and cfg_fm:
             ship_fm = extract_frontmatter(ship_path)
@@ -88,7 +86,6 @@ if projects_dir.is_dir():
                 ship_gate = ship_fm.get("gate", {})
                 ship_status = ship_fm.get("status", "draft")
 
-                # Gate enforced only when Ship claims approved/shipped
                 if ship_status in ("approved", "shipped"):
                     req_rt = ship_gate.get("ship_requires_redteam_cycles", 1)
                     act_rt = cfg_fm.get("redteam_cycles_completed", 0)
@@ -121,7 +118,7 @@ if projects_dir.is_dir():
                                 f"criticals_open={act_crit} "
                                 f"> allowed={max_crit} (no override)")
 
-# ── 4. Output ────────────────────────────────────────────────────────
+# ── Output ───────────────────────────────────────────────────────────
 for w in warnings:
     print(f"WARN  {w}")
 for e in errors:

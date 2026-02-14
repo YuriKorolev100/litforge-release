@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """LitForge init-project — create a new project from template.
 
-Copies Projects/_Project-Template/ to Projects/<name>/ and updates
-YAML frontmatter with the new project identity.
-
 Security:
-  - Only writes inside the newly created Projects/<name>/ directory.
+  - Only writes inside the newly created Projects/<n>/ directory.
   - Refuses to overwrite an existing directory.
-  - No network, no shell, no auto-apply.
+  - Rejects control characters in project name.
+  - Uses atomic writes for all file edits.
   - Kill switch honored before any work.
 
 Exit codes: 0=success, 1=failure, 3=KILL_SWITCH
@@ -18,27 +16,15 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# ── Resolve vault root ───────────────────────────────────────────────
-VAULT = None
-candidate = Path(__file__).resolve().parent
-for _ in range(10):
-    if (candidate / "_LitForge").is_dir():
-        VAULT = candidate
-        break
-    parent = candidate.parent
-    if parent == candidate:
-        break
-    candidate = parent
+# ── Shared imports ───────────────────────────────────────────────────
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lf_safe import (
+    find_vault_root, check_kill_switch,
+    atomic_write_text, assert_within_any, read_text_limited,
+)
 
-if VAULT is None:
-    print("FATAL: cannot locate _LitForge/ in ancestors of this script")
-    sys.exit(1)
-
-# ── Kill switch ──────────────────────────────────────────────────────
-KS = VAULT / "_LitForge" / "Agent" / "KILL_SWITCH.flag"
-if KS.exists():
-    print(f"ABORT: kill switch active  ({KS})")
-    sys.exit(3)
+VAULT = find_vault_root()
+check_kill_switch(VAULT)
 
 # ── Args ─────────────────────────────────────────────────────────────
 if len(sys.argv) < 2 or not sys.argv[1].strip():
@@ -48,8 +34,6 @@ if len(sys.argv) < 2 or not sys.argv[1].strip():
 PROJECT_NAME = sys.argv[1].strip()
 
 # ── Validate project name ────────────────────────────────────────────
-# Fail closed: reject anything that could escape Projects/ or cause
-# filesystem trouble.  No auto-sanitization — writer must fix it.
 FORBIDDEN_CHARS = set("/\\")
 FORBIDDEN_NAMES = {".", "..", "_Project-Template"}
 
@@ -71,6 +55,12 @@ if len(PROJECT_NAME) > 200:
     print("ERROR: project name too long (max 200 characters)")
     sys.exit(1)
 
+# Block control characters (U+0000..U+001F, U+007F..U+009F)
+if re.search(r"[\x00-\x1f\x7f-\x9f]", PROJECT_NAME):
+    print("ERROR: project name contains control characters")
+    print("  Use only printable characters.")
+    sys.exit(1)
+
 if not PROJECT_NAME:
     print("ERROR: project name cannot be empty")
     sys.exit(1)
@@ -89,6 +79,16 @@ if TARGET_DIR.exists():
     print("  Choose a different name or remove the existing directory.")
     sys.exit(1)
 
+# Enforce: target must resolve within Projects/
+try:
+    assert_within_any(
+        VAULT / "Projects" / PROJECT_NAME,
+        [VAULT / "Projects"],
+    )
+except PermissionError as exc:
+    print(f"ERROR: {exc}")
+    sys.exit(1)
+
 # ── Generate project ID ─────────────────────────────────────────────
 ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 PROJECT_ID = f"PROJ_{ts}"
@@ -98,44 +98,32 @@ try:
     shutil.copytree(TEMPLATE_DIR, TARGET_DIR)
 except OSError as exc:
     print(f"FATAL: failed to copy template: {exc}")
-    # Clean up partial copy — fail closed
     if TARGET_DIR.exists():
         shutil.rmtree(TARGET_DIR, ignore_errors=True)
     sys.exit(1)
 
+# Write allowlist: only the newly created project dir
+ALLOWED_WRITE_ROOTS = [TARGET_DIR]
+
 # ── YAML field replacement helpers ───────────────────────────────────
-# We do targeted text replacement on YAML frontmatter lines to avoid
-# reformatting the file.  This is intentionally conservative.
-
 def replace_yaml_field(text: str, key: str, new_value: str) -> str:
-    """Replace a top-level YAML scalar field's value in frontmatter text.
-
-    Matches lines like:  key: "old"  or  key: old
-    Replaces with:       key: "new_value"
-    Only operates within the first --- / --- fence.
-    """
-    # Pattern: start of line, the key, colon, optional space, then value
     pattern = re.compile(
         r'^(' + re.escape(key) + r':\s*)(".*?"|\'.*?\'|\S.*)$',
         re.MULTILINE,
     )
-    return pattern.sub(r'\g<1>"' + new_value.replace("\\", "\\\\").replace('"', '\\"') + '"', text, count=1)
+    safe_val = new_value.replace("\\", "\\\\").replace('"', '\\"')
+    return pattern.sub(r'\g<1>"' + safe_val + '"', text, count=1)
 
 
 def update_frontmatter_fields(path: Path, replacements: dict[str, str]) -> bool:
-    """Apply YAML field replacements inside the frontmatter of a markdown file.
-
-    Returns True if the file was modified.
-    """
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        print(f"  WARN: could not read {path.name}: {exc}")
+    text = read_text_limited(path)
+    if text is None:
+        print(f"  WARN: could not read {path.name}")
         return False
 
     m = re.match(r"^(---\n)(.*?)(\n---)(.*)", text, re.DOTALL)
     if not m:
-        return False  # no frontmatter
+        return False
 
     front = m.group(2)
     for key, val in replacements.items():
@@ -145,7 +133,7 @@ def update_frontmatter_fields(path: Path, replacements: dict[str, str]) -> bool:
     if new_text == text:
         return False
 
-    path.write_text(new_text, encoding="utf-8")
+    atomic_write_text(path, new_text, allowed_roots=ALLOWED_WRITE_ROOTS)
     return True
 
 
@@ -156,16 +144,13 @@ if cfg_path.is_file():
         "project_id": PROJECT_ID,
         "title": PROJECT_NAME,
     })
-    # Also update the body heading if it references the template name
-    try:
-        text = cfg_path.read_text(encoding="utf-8")
+    text = read_text_limited(cfg_path)
+    if text and "# Project Config — _Project-Template" in text:
         text = text.replace(
             "# Project Config — _Project-Template",
             f"# Project Config — {PROJECT_NAME}",
         )
-        cfg_path.write_text(text, encoding="utf-8")
-    except OSError:
-        pass  # non-fatal — cosmetic
+        atomic_write_text(cfg_path, text, allowed_roots=ALLOWED_WRITE_ROOTS)
 
 # ── Update stage files ───────────────────────────────────────────────
 stage_dir = TARGET_DIR / "Stage"
@@ -180,14 +165,14 @@ if stage_dir.is_dir():
 idx_path = TARGET_DIR / "00-Stage-Index.md"
 idx_updated = False
 if idx_path.is_file():
-    try:
-        text = idx_path.read_text(encoding="utf-8")
-        if "_Project-Template" in text:
-            text = text.replace("_Project-Template", PROJECT_NAME)
-            idx_path.write_text(text, encoding="utf-8")
+    text = read_text_limited(idx_path)
+    if text and "_Project-Template" in text:
+        text = text.replace("_Project-Template", PROJECT_NAME)
+        try:
+            atomic_write_text(idx_path, text, allowed_roots=ALLOWED_WRITE_ROOTS)
             idx_updated = True
-    except OSError:
-        pass
+        except OSError:
+            pass
 
 # ── Success output ───────────────────────────────────────────────────
 print("=" * 55)
