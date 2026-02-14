@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# lfctl — LitForge CLI dispatcher (Session 2)
+#
+# Subcommands:
+#   lint                 Run schema + structure + gate checks on vault
+#   replay <project>     Run moat-chain replay on a project directory
+#
+# Exit codes mirror child: 0=PASS, 1=FAIL, 2=deps, 3=KILL_SWITCH
+#
+# Non-negotiables:
+#   - No network access
+#   - No shell execution beyond calling python on known scripts
+#   - Kill switch honored before ANY work
+
+set -euo pipefail
+
+# ── Resolve vault root ───────────────────────────────────────────────
+# Walk up from this script's location to find _LitForge/
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VAULT=""
+CANDIDATE="$SCRIPT_DIR"
+for _ in $(seq 1 10); do
+    if [ -d "$CANDIDATE/_LitForge" ]; then
+        VAULT="$CANDIDATE"
+        break
+    fi
+    PARENT="$(dirname "$CANDIDATE")"
+    [ "$PARENT" = "$CANDIDATE" ] && break
+    CANDIDATE="$PARENT"
+done
+
+if [ -z "$VAULT" ]; then
+    echo "FATAL: cannot locate _LitForge/ in ancestors of $SCRIPT_DIR"
+    exit 1
+fi
+
+TOOLS_DIR="$VAULT/tools"
+
+# ── Kill switch (fail-closed, before ANY dispatch) ───────────────────
+KS="$VAULT/_LitForge/Agent/KILL_SWITCH.flag"
+if [ -f "$KS" ]; then
+    echo "ABORT: kill switch active  ($KS)"
+    echo "No commands executed.  Remove the flag to proceed."
+    exit 3
+fi
+
+# ── Usage ────────────────────────────────────────────────────────────
+usage() {
+    echo "Usage: lfctl <command> [args]"
+    echo ""
+    echo "Commands:"
+    echo "  lint                 Validate vault structure + schemas + gates"
+    echo "  replay <project>    Replay Red-Team moat chain for a project"
+    echo ""
+    echo "Vault: $VAULT"
+    exit 1
+}
+
+[ $# -lt 1 ] && usage
+
+CMD="$1"
+shift
+
+# ── Dispatch ─────────────────────────────────────────────────────────
+case "$CMD" in
+    lint)
+        exec python3 "$TOOLS_DIR/lf_lint.py" "$VAULT" "$@"
+        ;;
+    replay)
+        if [ $# -lt 1 ]; then
+            echo "ERROR: replay requires a project path argument"
+            echo "  Example: lfctl replay 'Projects/EXAMPLE - Tiny Loop Demo'"
+            exit 1
+        fi
+        PROJECT_PATH="$1"
+        # Resolve relative to vault if not absolute
+        if [ "${PROJECT_PATH:0:1}" != "/" ]; then
+            PROJECT_PATH="$VAULT/$PROJECT_PATH"
+        fi
+        if [ ! -d "$PROJECT_PATH" ]; then
+            echo "FATAL: not a directory: $PROJECT_PATH"
+            exit 1
+        fi
+        exec python3 "$TOOLS_DIR/lf_replay.py" "$PROJECT_PATH"
+        ;;
+    *)
+        echo "ERROR: unknown command '$CMD'"
+        usage
+        ;;
+esac
