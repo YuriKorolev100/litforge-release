@@ -23,3 +23,8 @@ __pycache__/
 
 # local artifacts
 files.zip
+
+# runtime noise
+_LitForge/_DEV_REPORTS/
+**/__pycache__/
+*.pyc
