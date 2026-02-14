@@ -11,3 +11,10 @@ __pycache__/
 # OS noise
 .DS_Store
 Thumbs.db
+.venv/
+
+# LitForge safety (local-only)
+_LitForge/Agent/KILL_SWITCH.flag
+
+# LitForge safety (local-only)
+_LitForge/Agent/KILL_SWITCH.flag
