@@ -12,3 +12,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 .venv/
+
+# LitForge safety (local-only)
+_LitForge/Agent/KILL_SWITCH.flag
