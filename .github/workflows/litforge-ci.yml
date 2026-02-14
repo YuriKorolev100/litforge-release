@@ -6,12 +6,8 @@ on:
     branches: [ main ]
 
 jobs:
-  lint:
+  litforge:
     runs-on: ubuntu-latest
-    env:
-      LITFORGE_CI: "1"
-      PYTHONUNBUFFERED: "1"
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,20 +16,17 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
 
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
           pip install pyyaml
 
-      - name: Show repo context (debug)
-        run: |
-          pwd
-          ls -la
-          ls -la _LitForge/Agent || true
-          ls -la tools || true
-
       - name: Run LitForge lint
         run: |
           python tools/lf_lint.py .
+
+      - name: Run LitForge replay (moat chain)
+        run: |
+          python tools/lf_replay.py "Projects/EXAMPLE - Tiny Loop Demo"
+
