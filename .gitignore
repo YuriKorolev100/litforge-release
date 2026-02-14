@@ -13,8 +13,10 @@ __pycache__/
 Thumbs.db
 .venv/
 
-# LitForge DEV-only outputs
+# LitForge dev reports (local-only)
 _LitForge/_DEV_REPORTS/
 _LitForge/_DEV_PATCHES/
-_LitForge/Agent/KILL_SWITCH.flag
+_LitForge/_DEV_TMP/
+__pycache__/
+*.pyc
 
