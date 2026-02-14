@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# lfctl — LitForge CLI dispatcher (Session 2)
+# lfctl — LitForge CLI dispatcher (Session 3)
 #
 # Subcommands:
+#   doctor               Check vault health (deps, structure, git)
+#   init-project <name>  Create a new project from template
 #   lint                 Run schema + structure + gate checks on vault
 #   replay <project>     Run moat-chain replay on a project directory
 #
@@ -49,8 +51,10 @@ usage() {
     echo "Usage: lfctl <command> [args]"
     echo ""
     echo "Commands:"
+    echo "  doctor               Check vault health (deps, structure, git)"
+    echo "  init-project <name>  Create a new project from template"
     echo "  lint                 Validate vault structure + schemas + gates"
-    echo "  replay <project>    Replay Red-Team moat chain for a project"
+    echo "  replay <project>     Replay Red-Team moat chain for a project"
     echo ""
     echo "Vault: $VAULT"
     exit 1
@@ -63,6 +67,17 @@ shift
 
 # ── Dispatch ─────────────────────────────────────────────────────────
 case "$CMD" in
+    doctor)
+        exec python3 "$TOOLS_DIR/lf_doctor.py"
+        ;;
+    init-project)
+        if [ $# -lt 1 ]; then
+            echo "ERROR: init-project requires a project name"
+            echo "  Example: lfctl init-project \"My Essay\""
+            exit 1
+        fi
+        exec python3 "$TOOLS_DIR/lf_init_project.py" "$1"
+        ;;
     lint)
         exec python3 "$TOOLS_DIR/lf_lint.py" "$VAULT" "$@"
         ;;
