@@ -1,38 +1,34 @@
 #!/usr/bin/env python3
-"""LitForge moat-chain replay — Session 2.
+"""LitForge moat-chain replay — hardened.
 
 Enforces the immutable Red-Team moat:
-  hostile audit → patch spec → diff-first → regression → gate
-
-Checks (all required for PASS):
-  A) Stage/05-Red-Team.md has frontmatter + ≥1 finding bullet/checkbox
-  B) Patches/PatchSpec_*.md exists (≥1)
-  C) Patches/diffs/*.patch exists (≥1)
-  D) Stage/07-Repeat.md has regression header + ≥1 completed [x] checkbox
-  E) Ship gate (if Ship status in {approved, shipped}):
-     redteam_cycles_completed >= ship_requires_redteam_cycles
-     criticals_open <= gate.criticals_open
+  hostile audit -> patch spec -> diff-first -> regression -> gate
 
 Exit codes: 0=PASS, 1=FAIL, 2=missing deps, 3=KILL_SWITCH
-Reports written to: _LitForge/_DEV_REPORTS/
+Reports written to: _LitForge/_DEV_REPORTS/ (allowlisted)
 """
-import os
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 try:
-    import yaml
+    import yaml  # noqa: F401
 except ImportError:
     print("FATAL: PyYAML required (pip install pyyaml)")
     sys.exit(2)
 
+# ── Shared imports ───────────────────────────────────────────────────
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lf_safe import (
+    find_vault_root, check_kill_switch,
+    read_text_limited, atomic_write_text, strip_frontmatter,
+)
+from lf_validate import extract_frontmatter
+
 # ── Args ─────────────────────────────────────────────────────────────
 if len(sys.argv) < 2:
     print("Usage: lf_replay.py <project_path>")
-    print("  project_path: absolute or relative path to a project directory")
-    print("                e.g. Projects/EXAMPLE\\ -\\ Tiny\\ Loop\\ Demo")
     sys.exit(1)
 
 PROJ = Path(sys.argv[1]).resolve()
@@ -40,63 +36,27 @@ if not PROJ.is_dir():
     print(f"FATAL: not a directory: {PROJ}")
     sys.exit(1)
 
-# ── Derive vault root ────────────────────────────────────────────────
-# Walk upward from project dir looking for _LitForge/
-VAULT = None
-candidate = PROJ
-for _ in range(10):  # bounded climb, no infinite loops
-    if (candidate / "_LitForge").is_dir():
-        VAULT = candidate
-        break
-    parent = candidate.parent
-    if parent == candidate:
-        break
-    candidate = parent
+VAULT = find_vault_root(PROJ)
+check_kill_switch(VAULT)
 
-if VAULT is None:
-    print("FATAL: cannot locate _LitForge/ in any ancestor of project path")
-    sys.exit(1)
-
-# ── Kill switch (fail-closed, checked before ANY work) ───────────────
-KS = VAULT / "_LitForge" / "Agent" / "KILL_SWITCH.flag"
-if KS.exists():
-    print(f"ABORT: kill switch active  ({KS})")
-    sys.exit(3)
-
-# ── Helpers ──────────────────────────────────────────────────────────
-def extract_frontmatter(path: Path) -> dict | None:
-    """Parse YAML frontmatter between --- fences. Returns None on failure."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
-    m = re.match(r"^---\n(.*?)\n---", text, re.DOTALL)
-    if not m:
-        return None
-    try:
-        return yaml.safe_load(m.group(1)) or {}
-    except yaml.YAMLError:
-        return None
-
-
-def read_body(path: Path) -> str:
-    """Return everything after the closing --- of frontmatter, or full text."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return ""
-    m = re.match(r"^---\n.*?\n---\n?(.*)", text, re.DOTALL)
-    if m:
-        return m.group(1)
-    return text
-
+# ── Writable allowlist for report output ─────────────────────────────
+REPORTS_DIR = VAULT / "_LitForge" / "_DEV_REPORTS"
+ALLOWED_WRITE_ROOTS = [REPORTS_DIR]
 
 errors: list[str] = []
 warnings: list[str] = []
 
-TAG = PROJ.name  # human-readable project label
-
+TAG = PROJ.name
 ship_status = "draft"
+
+# ── Helper ───────────────────────────────────────────────────────────
+def read_body(path: Path) -> str:
+    """Return body after frontmatter, using bounded read."""
+    text = read_text_limited(path)
+    if text is None:
+        return ""
+    return strip_frontmatter(text)
+
 
 # ══════════════════════════════════════════════════════════════════════
 # CHECK A — Hostile audit: Stage/05-Red-Team.md
@@ -117,7 +77,6 @@ else:
 
     body = read_body(rt_path)
 
-    # Look for a Findings section header
     has_findings_header = bool(
         re.search(r"^##\s+.*[Ff]inding", body, re.MULTILINE)
     )
@@ -126,10 +85,6 @@ else:
             "MOAT_A: 05-Red-Team.md has no '## Findings' section header"
         )
 
-    # At least one finding: a bullet "- " or checkbox "- [ ]" / "- [x]"
-    # under a ### Finding or similar subheading, OR any bullet in the
-    # Findings section.  Be generous: any "- " line after a Findings
-    # header counts, but we also accept "### Finding" subheadings.
     has_finding_item = bool(
         re.search(r"^###\s+Finding\s", body, re.MULTILINE)
     ) or bool(
@@ -165,7 +120,6 @@ if not rep_path.is_file():
     errors.append("MOAT_D: Stage/07-Repeat.md not found")
 else:
     rep_body = read_body(rep_path)
-
     rep_fm = extract_frontmatter(rep_path) or {}
     repeat_status = (rep_fm.get("status") or "draft").lower()
     repeat_is_final = repeat_status in ("accepted", "approved", "shipped")
@@ -175,7 +129,7 @@ else:
     )
     if not has_regression_header:
         errors.append(
-            "MOAT_D: 07-Repeat.md missing a regression/tests header (Regression/Tests/Acceptance Tests)"
+            "MOAT_D: 07-Repeat.md missing a regression/tests header"
         )
 
     ship_is_final = str(ship_status).lower() in ("approved", "shipped")
@@ -191,9 +145,8 @@ else:
             "MOAT_D: No completed checkboxes yet (Repeat is not final) — OK during draft"
         )
 
-
 # ══════════════════════════════════════════════════════════════════════
-# CHECK E — Ship gate (conditional: only if Ship claims approved/shipped)
+# CHECK E — Ship gate
 # ══════════════════════════════════════════════════════════════════════
 ship_path = PROJ / "Stage" / "08-Ship.md"
 cfg_path = PROJ / "00-Project-Config.md"
@@ -205,10 +158,9 @@ if ship_path.is_file():
     else:
         ship_status = ship_fm.get("status", "draft")
         if ship_status in ("approved", "shipped"):
-            # We need project config to read actuals
             if not cfg_path.is_file():
                 errors.append(
-                    "MOAT_E: Ship is {ship_status} but "
+                    f"MOAT_E: Ship is {ship_status} but "
                     "00-Project-Config.md not found"
                 )
             else:
@@ -225,10 +177,7 @@ if ship_path.is_file():
                     else:
                         overrides = ship_gate.get("overrides", [])
 
-                        # E1: redteam cycles
-                        req_rt = ship_gate.get(
-                            "ship_requires_redteam_cycles", 1
-                        )
+                        req_rt = ship_gate.get("ship_requires_redteam_cycles", 1)
                         act_rt = cfg_fm.get("redteam_cycles_completed")
                         if not isinstance(act_rt, int):
                             errors.append(
@@ -249,7 +198,6 @@ if ship_path.is_file():
                                     f"< required={req_rt} (no override)"
                                 )
 
-                        # E2: criticals
                         max_crit = ship_gate.get("criticals_open", 0)
                         act_crit = cfg_fm.get("criticals_open")
                         if act_crit is None:
@@ -279,17 +227,14 @@ else:
     warnings.append("MOAT_E: Stage/08-Ship.md not found — ship gate skipped")
 
 # ══════════════════════════════════════════════════════════════════════
-# Report + Output
+# Report + Output  (atomic write to allowlisted dir)
 # ══════════════════════════════════════════════════════════════════════
 n_e, n_w = len(errors), len(warnings)
 
-# Write report to _DEV_REPORTS/
-reports_dir = VAULT / "_LitForge" / "_DEV_REPORTS"
-reports_dir.mkdir(parents=True, exist_ok=True)
-
+REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 safe_tag = re.sub(r"[^A-Za-z0-9_-]", "_", TAG)
-report_path = reports_dir / f"replay_{safe_tag}_{ts}.txt"
+report_path = REPORTS_DIR / f"replay_{safe_tag}_{ts}.txt"
 
 lines: list[str] = []
 lines.append(f"# Replay Report: {TAG}")
@@ -306,12 +251,11 @@ if errors:
     lines.append(f"RESULT: FAIL  ({n_e} error(s), {n_w} warning(s))")
 else:
     lines.append(f"RESULT: PASS  ({n_w} warning(s))")
-
 report_text = "\n".join(lines) + "\n"
 
 try:
-    report_path.write_text(report_text, encoding="utf-8")
-except OSError as exc:
+    atomic_write_text(report_path, report_text, allowed_roots=ALLOWED_WRITE_ROOTS)
+except (OSError, PermissionError) as exc:
     print(f"WARN: could not write report: {exc}", file=sys.stderr)
 
 # Console output
