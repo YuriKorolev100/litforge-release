@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+branch="$(git symbolic-ref --quiet --short HEAD || true)"
+
+if [[ "$branch" == "main" ]]; then
+  echo "BLOCKED: you are on 'main'. Create a branch and use a pull request."
+  exit 1
+fi
