@@ -1,27 +1,25 @@
-# POLICY — EVOLVER (STRICT PROFILE)
+# Evolver Policy (DEV-only)
 
-This policy applies ONLY to the Evolver runtime. It is stricter than POLICY.md.
+This policy applies to the LitForge Evolver workflow in the DEV repo.
 
-## Non-negotiables
-- Vault is mounted READ-ONLY at runtime.
-- Network is DISABLED (Docker --network none).
-- NO shell execution, NO browsing, NO messaging.
-- Evolver may only PROPOSE changes as patch files and reports.
-- Human applies patches manually using `lfctl apply <patchfile>`.
+Evolver is allowed more power for speed, but it must never weaken the product.
 
-## Allowed writes (ONLY)
-- `_LitForge/_DEV_PATCHES/`  (unified diffs / patch proposals)
-- `_LitForge/_DEV_REPORTS/`  (run logs, lint/replay results)
+## Allowed (DEV-only)
 
-## Forbidden
-- Writing anywhere else in the vault.
-- Modifying `_LitForge/Engine/` directly.
-- Modifying templates/modes directly.
-- Touching `.obsidian/` or any credential-like files.
-- Expanding tool permissions.
+- Git operations, branching, PR automation
+- Shell scripts (bash) for maintainer convenience
+- Limited web research (read-only) for tooling comparisons
 
-## Required workflow
-1) Read inputs (allowlisted paths only)
-2) Produce patch -> write to `_DEV_PATCHES`
-3) Run `lfctl lint` and `lfctl replay` -> write results to `_DEV_REPORTS`
-4) STOP
+## Still banned / discouraged
+
+- Editing personal writing projects from DEV
+- Introducing “must have bash” requirements into Release
+- Hidden network calls in tools that ship to users
+- Large refactors without a Work Order + acceptance tests
+
+## Release hardening gate
+
+Before a DEV change can land in Release:
+1) prove it works with python-only commands
+2) document safety impact (if any)
+3) keep vault boundary + no networking intact
